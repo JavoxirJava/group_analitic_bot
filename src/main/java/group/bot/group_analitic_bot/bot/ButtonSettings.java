@@ -15,7 +15,7 @@ import java.util.List;
 public class ButtonSettings {
 
     //inlineButton
-    public List<List<InlineKeyboardButton>> getInlineButtonRows(List<String> data) {
+    private List<List<InlineKeyboardButton>> getInlineButtonRows(List<String> data) {
         List<List<InlineKeyboardButton>> rows = new ArrayList<>();
         int length = data.size() % 2 != 0 ? data.size() - 1 : data.size();
         for (int i = 0; i < length; i += 2) {
@@ -35,7 +35,7 @@ public class ButtonSettings {
         return new InlineKeyboardMarkup(getInlineButtonRows(list));
     }
 
-    public InlineKeyboardButton getInlineButton(String text, String callback) {
+    private InlineKeyboardButton getInlineButton(String text, String callback) {
         InlineKeyboardButton inlineKeyboardButton = new InlineKeyboardButton();
         inlineKeyboardButton.setCallbackData(callback);
         inlineKeyboardButton.setText(text);
@@ -44,7 +44,7 @@ public class ButtonSettings {
 
 
     //keyboardButton
-    public ReplyKeyboardMarkup keyboardButton(List<String> data) {
+    public ReplyKeyboardMarkup getKeyboardButton(List<String> data) {
         ReplyKeyboardMarkup markup = new ReplyKeyboardMarkup();
         List<KeyboardRow> keyboardRows = new ArrayList<>();
         int length = data.size() % 2 != 0 ? data.size() - 1 : data.size();
@@ -67,7 +67,7 @@ public class ButtonSettings {
     }
 
 
-    public KeyboardButton getKeyboardButton(String text) {
+    private KeyboardButton getKeyboardButton(String text) {
         return new KeyboardButton(text);
     }
 
