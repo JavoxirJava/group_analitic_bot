@@ -6,6 +6,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
+import java.util.Optional;
 
 @RequiredArgsConstructor
 @Service
@@ -25,7 +26,15 @@ public class GroupService {
         groupRepository.save(group);
     }
 
+    public void editGroupAddCountByChatId(Long chatId, Integer addCount) {
+        Optional<Group> group = groupRepository.findByChatId(chatId);
+        if (group.isPresent()) {
+            group.get().setAddCount(addCount);
+            groupRepository.save(group.get());
+        }
+    }
+
     public void deleteGroup(Long id) {
-        groupRepository.deleteByChatId(id);
+        groupRepository.deleteGroupByChatId(id);
     }
 }

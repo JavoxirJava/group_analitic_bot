@@ -5,6 +5,7 @@ import group.bot.group_analitic_bot.service.GroupService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
+import org.telegram.telegrambots.meta.api.methods.groupadministration.BanChatMember;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChat;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.GetChatMember;
 import org.telegram.telegrambots.meta.api.methods.groupadministration.RestrictChatMember;
@@ -15,14 +16,12 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.ChatPermissions;
 import org.telegram.telegrambots.meta.api.objects.Message;
+import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMemberLeft;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.List;
 import java.util.Map;
-
 
 @Service
 public class BotMethods {
@@ -34,11 +33,9 @@ public class BotMethods {
     Map<Long, Integer> userCount = new HashMap<>(); // user qushgan son
     Map<Long, String> choose = new HashMap<>(); // careator panelda kerakli bulimni tanlash
     Map<Long, String> groupUsername = new HashMap<>();
-    Map<Long, String> groupCount = new HashMap<>(); // gruppaga omdam qushish limiti
-    Map<Long, Group> groupMap = new HashMap<>();
-    List<Group> groups = new ArrayList<>(); // Groupni malumotlarini olish uchun harsafar bazaga bormaslik uchun
-
-    Integer maxCount = 3; // user qushishi shart bulgan son
+    Map<Long, Group> groupMap = new HashMap<>(); // Groupni malumotlarini olish uchun harsafar bazaga bormaslik uchun
+    Map<Long, Long> chooseGroup = new HashMap<>(); // vaqtinchalik tanlangan user
+    int blockSeconds = 60; // 5 daqiqa
 
     public BotMethods(GroupService groupService, @Lazy BotSettings botSettings, ButtonSettings buttonSettings) {
         this.groupService = groupService;
@@ -54,13 +51,43 @@ public class BotMethods {
             SendMessage sm = new SendMessage(chatId.toString(), message.getText());
             String text = message.getText();
             if (Template.CREATOR_ID.equals(userId.toString())) creatorPanel(sm, text, chatId);
-            else if (message.getChat().getType().equals("supergroup")) {
-                if (isAdmin(chatId, userId)) adminPanel(sm, text);
+            if (groupMap.isEmpty()) groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+            else if (message.getChat().getType().equals("supergroup") && groupMap.get(chatId) != null) {
+                if (isAdmin(chatId, userId)) adminPanel(chatId, sm, text);
                 else userPanel(message, sm, chatId, userId);
             } else if (text.equals("/start")) sendMSG(sm, "Assalomu alaykum Adminga murojat qiling! @M_Javoxir_1");
         } else if (!message.getNewChatMembers().isEmpty()) {
-            message.getNewChatMembers().forEach(user -> userCount.put(userId, count + 1));
+            message.getNewChatMembers().forEach(user -> {
+                if (user.getIsBot()) deleteUserInGroup(chatId, user.getId());
+                else userCount.put(userId, count + 1);
+            });
             deleteMSG(message.getMessageId(), chatId);
+        } else if (message.getLeftChatMember() != null) deleteMSG(message.getMessageId(), chatId);
+
+    }
+
+    public void callbackData(CallbackQuery callbackQuery) {
+        Long userId = callbackQuery.getMessage().getChatId();
+        String data = callbackQuery.getData();
+        SendMessage sm = new SendMessage(userId.toString(), data);
+        switch (data) {
+            case "O'chirish": { // TODO guruh o'chirishda xatolik bor
+                groupService.deleteGroup(chooseGroup.get(userId));
+                sm.setReplyMarkup(buttonSettings.getKeyboardButton(Template.ADMIN_PANEL));
+                sendMSG(sm, "Guruh o'chirildi!");
+                groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+            }
+            case "Bekor qilish": {
+                sm.setReplyMarkup(buttonSettings.getKeyboardButton(Template.ADMIN_PANEL));
+                sendMSG(sm, "Kearakli bulimni tanlang!");
+            }
+            default: {
+                if (choose.get(userId).equals("DeleteGroup")) {
+                    chooseGroup.put(userId, getGroup(data).getId());
+                    sm.setReplyMarkup(buttonSettings.getInlineMarkup(Template.IS_DELETED));
+                    sendMSG(sm, "Haqiqatdanham guruhni o'chirmoqchimisiz?");
+                }
+            }
         }
     }
 
@@ -69,19 +96,23 @@ public class BotMethods {
             case "/start": {
                 sm.setReplyMarkup(buttonSettings.getKeyboardButton(Template.ADMIN_PANEL));
                 sendMSG(sm, "Kerakli bulimni tanlang!");
+                break;
             }
             case "Add Group": {
-                sendMSG(sm, "Guruh nomini username sini kiriting: ");
+                sendMSG(sm, "Guruh username sini kiriting: ");
                 choose.put(userId, "username");
+                break;
             }
             case "Get Groups": {
                 sm.setReplyMarkup(buttonSettings.getInlineMarkup(groupService.getAllGroups().stream().map(Group::getUsername).toList()));
                 sendMSG(sm, "Guruhlar");
+                break;
             }
             case "Delete Group": {
                 sm.setReplyMarkup(buttonSettings.getInlineMarkup(groupService.getAllGroups().stream().map(Group::getUsername).toList()));
                 sendMSG(sm, "O'chirmoqchi bulgan kruppangizni tanlang!");
                 choose.put(userId, "DeleteGroup");
+                break;
             }
             default: {
                 if (choose.get(userId) != null) {
@@ -96,7 +127,7 @@ public class BotMethods {
                         Chat group = getGroup(groupUsername.get(userId));
                         groupService.addGroup(Group.builder()
                                 .chatId(group.getId())
-                                .username(groupUsername.get(userId))
+                                .username(group.getUserName() == null ? group.getId().toString() : group.getUserName())
                                 .addCount(Integer.parseInt(text)).build());
                         sendMSG(sm, "Guruh qo'shildi");
                         groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
@@ -106,23 +137,46 @@ public class BotMethods {
         }
     }
 
-    public void adminPanel(SendMessage sm, String text) {
+    public void adminPanel(Long chatId, SendMessage sm, String text) {
         if (text.startsWith("#set ")) {
             try {
-                maxCount = Integer.parseInt(text.split(" ")[1]);
-                sendMSG(sm, "Guruga odam qushish limiti " + maxCount + " ta ga uzgartirildi");
+                groupService.editGroupAddCountByChatId(chatId, Integer.parseInt(text.split(" ")[1]));
+                groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+                sendMSG(sm, "Guruga odam qushish limiti " + groupMap.get(chatId).getAddCount() + " ta ga uzgartirildi");
             } catch (Exception e) {
-                sendMSG(sm, "Limitni tug'ri kiriting Msol: #set 5");
+                sendMSG(sm, "Limitni tug'ri kiriting Misol: #set 5");
             }
         }
     }
 
     public void userPanel(Message message, SendMessage sm, Long chatId, Long userId) {
-        if (userCount.get(userId) != null && userCount.get(userId) >= maxCount) {
+        String regex = ".*(https?://|www\\.|@[a-zA-Z0-9._-]+|\\b[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,3}\\b).*";
+        String text = message.getText();
+        if (text.matches(regex)) deleteMSG(message.getMessageId(), chatId);
+        int count = userCount.get(userId) == null ? 0 : userCount.get(userId);
+        if (count < groupMap.get(chatId).getAddCount()) {
             deleteMSG(message.getMessageId(), chatId);
-            sendMSG(sm, "Guruhga " + maxCount + " ta odam qushing kiyin yoza olasiz! #" +
-                    message.getFrom().getFirstName() + "\nsiz hozir " + userCount.get(userId)  + " ta odam qushgansiz");
-            restrictUser(chatId, userId, 60);
+            sendMSG(sm, "Guruhga " + groupMap.get(chatId).getAddCount() + " ta odam qo'shing keyin yoza olasiz! #" +
+                    message.getFrom().getFirstName() + "\nsiz hozir " + count  + " ta odam qo'shgansiz.");
+            restrictUser(chatId, userId, blockSeconds);
+        }
+    }
+
+    public boolean isAdmin(Long chatId, long userId) {
+        try {
+            String status = botSettings.execute(new GetChatMember(chatId.toString(), userId)).getStatus();
+            return (status.equals("administrator") || status.equals("creator"));
+        } catch (TelegramApiException e) {
+            System.out.println(e.getMessage());
+        }
+        return false;
+    }
+
+    public Chat getGroup(String username) {
+        try {
+            return botSettings.execute(new GetChat(username));
+        } catch (TelegramApiException e) {
+            return null;
         }
     }
 
@@ -170,7 +224,7 @@ public class BotMethods {
     }
 
     public void restrictUser(Long chatId, Long userId, Integer seconds) {
-        ChatPermissions permissions = new ChatPermissions(false, false, false, false, false, false, false, false);
+        ChatPermissions permissions = new ChatPermissions(false, false, false, false, true, false, true, false);
         RestrictChatMember rcm = new RestrictChatMember(chatId.toString(), userId, permissions);
         rcm.setUntilDate((int) (System.currentTimeMillis() / 1000L + seconds));
         try {
@@ -180,22 +234,11 @@ public class BotMethods {
         }
     }
 
-    public boolean isAdmin(Long chatId, long userId) {
+    public void deleteUserInGroup(Long chatId, Long userId) {
         try {
-            String status = botSettings.execute(new GetChatMember(chatId.toString(), userId)).getStatus();
-            return (status.equals("administrator") || status.equals("creator"));
+            botSettings.execute(new BanChatMember(chatId.toString(), userId));
         } catch (TelegramApiException e) {
             System.out.println(e.getMessage());
         }
-        return false;
-    }
-
-    public Chat getGroup(String username) {
-        try {
-            return botSettings.execute(new GetChat(username));
-        } catch (TelegramApiException e) {
-            System.out.println(e.getMessage());
-        }
-        return null;
     }
 }
