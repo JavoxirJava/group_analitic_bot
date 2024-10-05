@@ -17,11 +17,13 @@ public class UserService {
         return userRepository.findAll();
     }
 
-    public User getUserFindChatId(Long userId) {
-        return userRepository.findByChatId(userId).orElse(null);
+    public User getUserFindId(Long userId) {
+        return userRepository.findById(userId).orElse(null);
     }
 
-    public void saveUser(User user) {
-        userRepository.save(user);
+    public User saveUser(User user) {
+        User user2 = getUserFindId(user.getId());
+        if (user2 != null) return user2;
+        return userRepository.save(user);
     }
 }

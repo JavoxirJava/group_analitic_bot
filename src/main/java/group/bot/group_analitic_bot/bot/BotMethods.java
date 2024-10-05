@@ -1,7 +1,11 @@
 package group.bot.group_analitic_bot.bot;
 
 import group.bot.group_analitic_bot.entity.Group;
+import group.bot.group_analitic_bot.entity.User;
+import group.bot.group_analitic_bot.entity.UserGroup;
 import group.bot.group_analitic_bot.service.GroupService;
+import group.bot.group_analitic_bot.service.UserGroupService;
+import group.bot.group_analitic_bot.service.UserService;
 import org.springframework.context.annotation.Lazy;
 import org.springframework.stereotype.Service;
 import org.telegram.telegrambots.meta.api.methods.AnswerCallbackQuery;
@@ -16,7 +20,6 @@ import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Chat;
 import org.telegram.telegrambots.meta.api.objects.ChatPermissions;
 import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.chatmember.ChatMemberLeft;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
@@ -29,41 +32,52 @@ public class BotMethods {
     private final GroupService groupService;
     private final BotSettings botSettings;
     private final ButtonSettings buttonSettings;
+    private final UserGroupService userGroupService;
+    private final UserService userService;
 
     Map<Long, Integer> userCount = new HashMap<>(); // user qushgan son
     Map<Long, String> choose = new HashMap<>(); // careator panelda kerakli bulimni tanlash
     Map<Long, String> groupUsername = new HashMap<>();
     Map<Long, Group> groupMap = new HashMap<>(); // Groupni malumotlarini olish uchun harsafar bazaga bormaslik uchun
     Map<Long, Long> chooseGroup = new HashMap<>(); // vaqtinchalik tanlangan user
-    int blockSeconds = 60; // 5 daqiqa
+    int blockSeconds = 30; // 1 daqiqa
 
-    public BotMethods(GroupService groupService, @Lazy BotSettings botSettings, ButtonSettings buttonSettings) {
+    public BotMethods(GroupService groupService, @Lazy BotSettings botSettings, ButtonSettings buttonSettings, UserGroupService userGroupService, UserService userService) {
         this.groupService = groupService;
         this.botSettings = botSettings;
         this.buttonSettings = buttonSettings;
+        this.userGroupService = userGroupService;
+        this.userService = userService;
     }
 
-    public void message(Message message) {
+    public void message(Message message) { // TODO Avval localda sinab kurish kerak!!! 😳
         Long chatId = message.getChatId();
         Long userId = message.getFrom().getId();
-        int count = userCount.get(userId) == null ? 0 : userCount.get(userId);
         if (message.hasText()) {
             SendMessage sm = new SendMessage(chatId.toString(), message.getText());
             String text = message.getText();
             if (Template.CREATOR_ID.equals(userId.toString())) creatorPanel(sm, text, chatId);
-            if (groupMap.isEmpty()) groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+            if (groupMap.isEmpty()) groupService.getAllGroups().forEach(g -> groupMap.put(g.getId(), g));
             else if (message.getChat().getType().equals("supergroup") && groupMap.get(chatId) != null) {
                 if (isAdmin(chatId, userId)) adminPanel(chatId, sm, text);
                 else userPanel(message, sm, chatId, userId);
             } else if (text.equals("/start")) sendMSG(sm, "Assalomu alaykum Adminga murojat qiling! @M_Javoxir_1");
         } else if (!message.getNewChatMembers().isEmpty()) {
+            if (groupMap.isEmpty()) groupService.getAllGroups().forEach(g -> groupMap.put(g.getId(), g));
             message.getNewChatMembers().forEach(user -> {
-                if (user.getIsBot()) deleteUserInGroup(chatId, user.getId());
-                else userCount.put(userId, count + 1);
+                User userSave = userService.saveUser(User.builder()
+                        .id(user.getId())
+                        .firstName(user.getFirstName())
+                        .username(user.getUserName())
+                        .build());
+                userGroupService.saveUserGroup(new UserGroup(userSave, groupMap.get(chatId)));
+                if (user.getIsBot()) deleteUserInGroup(chatId, user.getId()); // botlarni o'chirish
+                if (!userId.equals(message.getNewChatMembers().get(0).getId())) userCount.put(userId, (userCount.get(userId) == null ? 0 : userCount.get(userId)) + 1);
             });
+            if ((!userId.equals(message.getNewChatMembers().get(0).getId())) && userCount.get(userId) >= groupMap.get(chatId).getAddCount())
+                userGroupService.editUserGroupActive(userId, chatId, true);
             deleteMSG(message.getMessageId(), chatId);
         } else if (message.getLeftChatMember() != null) deleteMSG(message.getMessageId(), chatId);
-
     }
 
     public void callbackData(CallbackQuery callbackQuery) {
@@ -75,11 +89,13 @@ public class BotMethods {
                 groupService.deleteGroup(chooseGroup.get(userId));
                 sm.setReplyMarkup(buttonSettings.getKeyboardButton(Template.ADMIN_PANEL));
                 sendMSG(sm, "Guruh o'chirildi!");
-                groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+                groupService.getAllGroups().forEach(g -> groupMap.put(g.getId(), g));
+                break;
             }
             case "Bekor qilish": {
                 sm.setReplyMarkup(buttonSettings.getKeyboardButton(Template.ADMIN_PANEL));
                 sendMSG(sm, "Kearakli bulimni tanlang!");
+                break;
             }
             default: {
                 if (choose.get(userId).equals("DeleteGroup")) {
@@ -126,11 +142,12 @@ public class BotMethods {
                     } else if (choose.get(userId).equals("count")) {
                         Chat group = getGroup(groupUsername.get(userId));
                         groupService.addGroup(Group.builder()
-                                .chatId(group.getId())
-                                .username(group.getUserName() == null ? group.getId().toString() : group.getUserName())
+                                .id(group.getId())
+                                .username(group.getUserName() == null ? group.getId().toString() : "@" + group.getUserName())
                                 .addCount(Integer.parseInt(text)).build());
                         sendMSG(sm, "Guruh qo'shildi");
-                        groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+                        groupService.getAllGroups().forEach(g -> groupMap.put(g.getId(), g));
+                        choose.remove(userId);
                     }
                 }
             }
@@ -141,7 +158,7 @@ public class BotMethods {
         if (text.startsWith("#set ")) {
             try {
                 groupService.editGroupAddCountByChatId(chatId, Integer.parseInt(text.split(" ")[1]));
-                groupService.getAllGroups().forEach(g -> groupMap.put(g.getChatId(), g));
+                groupService.getAllGroups().forEach(g -> groupMap.put(g.getId(), g));
                 sendMSG(sm, "Guruga odam qushish limiti " + groupMap.get(chatId).getAddCount() + " ta ga uzgartirildi");
             } catch (Exception e) {
                 sendMSG(sm, "Limitni tug'ri kiriting Misol: #set 5");
@@ -154,12 +171,14 @@ public class BotMethods {
         String text = message.getText();
         if (text.matches(regex)) deleteMSG(message.getMessageId(), chatId);
         int count = userCount.get(userId) == null ? 0 : userCount.get(userId);
-        if (count < groupMap.get(chatId).getAddCount()) {
+        UserGroup userGroup = userGroupService.getUserGroupByUserAndGroup(userId, chatId);
+        if (userGroup != null && !userGroup.getIsActive()) {
             deleteMSG(message.getMessageId(), chatId);
             sendMSG(sm, "Guruhga " + groupMap.get(chatId).getAddCount() + " ta odam qo'shing keyin yoza olasiz! #" +
                     message.getFrom().getFirstName() + "\nsiz hozir " + count  + " ta odam qo'shgansiz.");
             restrictUser(chatId, userId, blockSeconds);
         }
+
     }
 
     public boolean isAdmin(Long chatId, long userId) {
@@ -224,7 +243,7 @@ public class BotMethods {
     }
 
     public void restrictUser(Long chatId, Long userId, Integer seconds) {
-        ChatPermissions permissions = new ChatPermissions(false, false, false, false, true, false, true, false);
+        ChatPermissions permissions = new ChatPermissions(false, false, false, false, false, false, true, false);
         RestrictChatMember rcm = new RestrictChatMember(chatId.toString(), userId, permissions);
         rcm.setUntilDate((int) (System.currentTimeMillis() / 1000L + seconds));
         try {

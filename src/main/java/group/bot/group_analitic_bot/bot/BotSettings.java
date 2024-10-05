@@ -12,16 +12,25 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 @RequiredArgsConstructor
 public class BotSettings extends TelegramLongPollingBot {
 
+    // Rang kodlari
+    public static final String ANSI_RESET = "\u001B[0m";      // Rangi tiklash
+    public static final String ANSI_RED = "\u001B[31m";       // Qizil rang
+    public static final String ANSI_GREEN = "\u001B[32m";     // Yashil rang
+    public static final String ANSI_YELLOW = "\u001B[33m";    // Sariq rang
+    public static final String ANSI_BLUE = "\u001B[34m";      // Ko'k rang
+
     final BotMethods botMethods;
+    Thread botThread;
 
     @Override
     public void onUpdateReceived(Update update) {
-        new Thread(() -> {
+        botThread = new Thread(() -> {
+            System.out.println(ANSI_GREEN + botThread.getName() + " -> New Thread started." + ANSI_RESET);
             if (update.hasMessage()) botMethods.message(update.getMessage());
             else if (update.hasCallbackQuery()) botMethods.callbackData(update.getCallbackQuery());
-        }).start();
-//        if (update.hasMessage()) botMethods.message(update.getMessage());
-//        else if (update.hasCallbackQuery()) botMethods.callbackData(update.getCallbackQuery());
+            stopBot();
+        });
+        botThread.start();
     }
 
     @Override
@@ -34,19 +43,11 @@ public class BotSettings extends TelegramLongPollingBot {
         return Template.BOT_TOKEN;
     }
 
-    public void sendPIC(SendPhoto sp) {
-        try {
-            execute(sp);
-        } catch (TelegramApiException e) {
-            System.err.println("send photo error");
-        }
-    }
+    public void stopBot() {
 
-    public void sendVd(SendVideo sv) {
-        try {
-            execute(sv);
-        } catch (TelegramApiException e) {
-            System.err.println("send video error");
+        if (botThread != null && botThread.isAlive()) {
+            botThread.interrupt();
+            System.err.println(ANSI_RED + botThread.getName() + " -> Bot thread stopped." + ANSI_RESET);
         }
     }
 }

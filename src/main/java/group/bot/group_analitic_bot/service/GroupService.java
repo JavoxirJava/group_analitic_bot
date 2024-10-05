@@ -18,8 +18,8 @@ public class GroupService {
         return groupRepository.findAll();
     }
 
-    public Group getGroupChatById(Long id) {
-        return groupRepository.findByChatId(id).orElse(null);
+    public Group getGroupById(Long id) {
+        return groupRepository.findById(id).orElse(null);
     }
 
     public void addGroup(Group group) {
@@ -27,7 +27,7 @@ public class GroupService {
     }
 
     public void editGroupAddCountByChatId(Long chatId, Integer addCount) {
-        Optional<Group> group = groupRepository.findByChatId(chatId);
+        Optional<Group> group = groupRepository.findById(chatId);
         if (group.isPresent()) {
             group.get().setAddCount(addCount);
             groupRepository.save(group.get());
@@ -35,6 +35,6 @@ public class GroupService {
     }
 
     public void deleteGroup(Long id) {
-        groupRepository.deleteGroupByChatId(id);
+        groupRepository.deleteById(id);
     }
 }

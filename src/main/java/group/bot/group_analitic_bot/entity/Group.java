@@ -12,11 +12,7 @@ import lombok.*;
 @Entity(name = "groups")
 public class Group {
     @Id
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
-
-    @Column(nullable = false, unique = true)
-    private Long chatId;
 
     private String username;
 
