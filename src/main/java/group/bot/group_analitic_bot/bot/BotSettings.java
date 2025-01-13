@@ -25,10 +25,11 @@ public class BotSettings extends TelegramLongPollingBot {
     @Override
     public void onUpdateReceived(Update update) {
         botThread = new Thread(() -> {
-            System.out.println(ANSI_GREEN + botThread.getName() + " -> New Thread started." + ANSI_RESET);
+            System.out.println(ANSI_BLUE + botThread.getName() + " -> New Thread started." + ANSI_RESET);
             if (update.hasMessage()) botMethods.message(update.getMessage());
             else if (update.hasCallbackQuery()) botMethods.callbackData(update.getCallbackQuery());
             stopBot();
+            
         });
         botThread.start();
     }
@@ -44,7 +45,6 @@ public class BotSettings extends TelegramLongPollingBot {
     }
 
     public void stopBot() {
-
         if (botThread != null && botThread.isAlive()) {
             botThread.interrupt();
             System.err.println(ANSI_RED + botThread.getName() + " -> Bot thread stopped." + ANSI_RESET);

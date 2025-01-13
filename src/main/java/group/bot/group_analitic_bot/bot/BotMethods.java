@@ -178,7 +178,6 @@ public class BotMethods {
                     message.getFrom().getFirstName() + "\nsiz hozir " + count  + " ta odam qo'shgansiz.");
             restrictUser(chatId, userId, blockSeconds);
         }
-
     }
 
     public boolean isAdmin(Long chatId, long userId) {
