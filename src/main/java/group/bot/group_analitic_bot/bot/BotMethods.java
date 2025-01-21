@@ -50,7 +50,7 @@ public class BotMethods {
         this.userService = userService;
     }
 
-    public void message(Message message) { // TODO Avval localda sinab kurish kerak!!! 😳
+    public void message(Message message) {
         Long chatId = message.getChatId();
         Long userId = message.getFrom().getId();
         if (message.hasText()) {
